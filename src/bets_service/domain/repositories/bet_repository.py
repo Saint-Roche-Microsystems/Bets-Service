@@ -45,7 +45,8 @@ class BetRepository(ABC):
     async def distinct_user_ids(self) -> list[str]:
         """Devuelve los ``user_id`` distintos que tienen al menos una apuesta.
 
-        Se usa para el backfill de estadísticas al arrancar.
+        No se usa al arrancar: lo consumirá el job de carga inicial que publica los
+        eventos históricos hacia progression-service (T-029).
         """
 
     @abstractmethod
