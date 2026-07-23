@@ -9,21 +9,6 @@ from typing import Protocol
 from bets_service.domain.entities.user_validation import UserValidation
 
 
-class StatisticsSynchronizer(Protocol):
-    """Capacidad de recalcular las estadísticas de un usuario.
-
-    Heredado del monolito, donde lo implementaba ``ProgressionService`` y ``BetService`` lo
-    llamaba en proceso tras cada mutación.
-
-    En la arquitectura de microservicios ese recálculo pertenece a progression-service y
-    debe llegar por eventos, no por una llamada síncrona: este puerto se retira en T-021 y
-    su hueco lo ocupa el publisher de eventos de dominio (T-022). Aquí nunca se inyecta una
-    implementación real.
-    """
-
-    async def recalculate(self, user_id: str) -> None: ...
-
-
 class UserValidator(Protocol):
     """Capacidad de confirmar que un usuario puede operar.
 

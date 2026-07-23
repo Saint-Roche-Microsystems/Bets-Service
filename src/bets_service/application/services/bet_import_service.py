@@ -2,8 +2,8 @@
 
 Orquesta la validación y creación reutilizando las reglas existentes:
 * ``BetCreate`` (schema Pydantic) como única fuente de validación de campos.
-* ``BetService.create_bet`` para crear cada apuesta (calcula derivados y
-  sincroniza estadísticas/ranking/logros).
+* ``BetService.create_bet`` para crear cada apuesta (valida al usuario contra
+  users-service y calcula los campos derivados).
 
 No contiene lógica de lectura de Excel: recibe filas ya leídas por el adaptador
 de infraestructura. Las filas que comparten un mismo valor en la columna

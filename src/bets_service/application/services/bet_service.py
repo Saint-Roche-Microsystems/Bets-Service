@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from bets_service.application.ports import StatisticsSynchronizer, UserValidator
+from bets_service.application.ports import UserValidator
 from bets_service.core.exceptions import ForbiddenError, InvalidBetError, NotFoundError
 from bets_service.domain.entities.bet import Bet, BetLeg, BetStatus, BetType
 from bets_service.domain.repositories.bet_repository import BetRepository
@@ -36,23 +36,17 @@ class BetService:
     Antes de aceptar una mutación consulta a ``users-service`` (puerto ``UserValidator``)
     que la cuenta esté activa y sin bloquear.
 
-    Si se le inyecta un ``StatisticsSynchronizer``, tras cada mutación recalcula
-    las estadísticas del usuario para mantener el ranking sincronizado.
+    Ya **no** recalcula estadísticas: ese trabajo pertenece a progression-service y llegará
+    allí por eventos de dominio (T-022), no por una llamada en proceso.
     """
 
     def __init__(
         self,
         bet_repository: BetRepository,
         user_validator: UserValidator,
-        stats_sync: StatisticsSynchronizer | None = None,
     ) -> None:
         self._bets = bet_repository
         self._users = user_validator
-        self._stats_sync = stats_sync
-
-    async def _sync_stats(self, user_id: str) -> None:
-        if self._stats_sync is not None:
-            await self._stats_sync.recalculate(user_id)
 
     async def _ensure_can_bet(self, user_id: str) -> None:
         """Comprueba contra users-service que el usuario puede operar.
@@ -79,9 +73,7 @@ class BetService:
         bet = Bet(user_id=user_id, **data)
         _validate_type_vs_legs(bet)
         bet.recalculate()
-        created = await self._bets.create(bet)
-        await self._sync_stats(user_id)
-        return created
+        return await self._bets.create(bet)
 
     async def get_bet(self, user_id: str, bet_id: str) -> Bet:
         """Devuelve una apuesta del usuario o lanza :class:`NotFoundError`."""
@@ -127,9 +119,7 @@ class BetService:
         _validate_type_vs_legs(bet)
         bet.recalculate()
         bet.updated_at = datetime.now(timezone.utc)
-        updated = await self._bets.update(bet)
-        await self._sync_stats(user_id)
-        return updated
+        return await self._bets.update(bet)
 
     async def delete_bet(self, user_id: str, bet_id: str) -> None:
         """Elimina una apuesta del usuario o lanza :class:`NotFoundError`."""
@@ -137,4 +127,3 @@ class BetService:
         # Reutiliza get_bet para verificar propiedad y existencia.
         await self.get_bet(user_id, bet_id)
         await self._bets.delete(bet_id)
-        await self._sync_stats(user_id)

@@ -122,9 +122,8 @@ async def import_bets(
 ) -> ImportSummaryResponse:
     """Procesa la plantilla rellena y devuelve un resumen de la importación.
 
-    Cada fila se valida con las mismas reglas que la creación individual; las
-    filas con errores se rechazan sin detener el procesamiento de las demás y las
-    apuestas importadas actualizan automáticamente las estadísticas y el ranking.
+    Cada fila se valida con las mismas reglas que la creación individual y las
+    filas con errores se rechazan sin detener el procesamiento de las demás.
     """
 
     if not (file.filename or "").lower().endswith(".xlsx"):
