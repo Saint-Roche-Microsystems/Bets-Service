@@ -11,12 +11,17 @@ from typing import Annotated
 from fastapi import Depends, Header, Request
 from pymongo.asynchronous.database import AsyncDatabase
 
+from bets_service.application.ports import UserValidator
 from bets_service.application.services.bet_import_service import BetImportService
 from bets_service.application.services.bet_service import BetService
 from bets_service.core.config import Settings, get_settings
 from bets_service.core.exceptions import InvalidCredentialsError
 from bets_service.domain.repositories.bet_repository import BetRepository
 from bets_service.infrastructure.repositories.mongo_bet_repository import MongoBetRepository
+from bets_service.infrastructure.tcp.users_validator import (
+    AlwaysValidUserValidator,
+    TcpUserValidator,
+)
 
 
 def get_db(request: Request) -> AsyncDatabase:
@@ -71,10 +76,25 @@ def get_bet_repository(
     return MongoBetRepository(db)
 
 
+def get_user_validator(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> UserValidator:
+    """Validador de usuario, o el permisivo de desarrollo si no hay users-service."""
+
+    if not settings.users_service_tcp_host:
+        return AlwaysValidUserValidator()
+    return TcpUserValidator(
+        settings.users_service_tcp_host,
+        settings.users_service_tcp_port,
+        settings.users_service_timeout_seconds,
+    )
+
+
 def get_bet_service(
     bets: Annotated[BetRepository, Depends(get_bet_repository)],
+    users: Annotated[UserValidator, Depends(get_user_validator)],
 ) -> BetService:
-    return BetService(bets)
+    return BetService(bets, users)
 
 
 def get_bet_import_service(

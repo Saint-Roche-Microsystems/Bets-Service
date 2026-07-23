@@ -3,8 +3,8 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from bets_service.application.ports import StatisticsSynchronizer
-from bets_service.core.exceptions import InvalidBetError, NotFoundError
+from bets_service.application.ports import StatisticsSynchronizer, UserValidator
+from bets_service.core.exceptions import ForbiddenError, InvalidBetError, NotFoundError
 from bets_service.domain.entities.bet import Bet, BetLeg, BetStatus, BetType
 from bets_service.domain.repositories.bet_repository import BetRepository
 
@@ -33,6 +33,9 @@ class BetService:
     autenticado; en caso contrario se comporta como si no existiera (404),
     evitando filtrar la existencia de recursos ajenos.
 
+    Antes de aceptar una mutación consulta a ``users-service`` (puerto ``UserValidator``)
+    que la cuenta esté activa y sin bloquear.
+
     Si se le inyecta un ``StatisticsSynchronizer``, tras cada mutación recalcula
     las estadísticas del usuario para mantener el ranking sincronizado.
     """
@@ -40,17 +43,36 @@ class BetService:
     def __init__(
         self,
         bet_repository: BetRepository,
+        user_validator: UserValidator,
         stats_sync: StatisticsSynchronizer | None = None,
     ) -> None:
         self._bets = bet_repository
+        self._users = user_validator
         self._stats_sync = stats_sync
 
     async def _sync_stats(self, user_id: str) -> None:
         if self._stats_sync is not None:
             await self._stats_sync.recalculate(user_id)
 
+    async def _ensure_can_bet(self, user_id: str) -> None:
+        """Comprueba contra users-service que el usuario puede operar.
+
+        Fail-closed: si el validador no puede responder deja pasar la
+        ``UserValidationUnavailableError`` (-> 503) en vez de asumir que la cuenta está
+        sana. Aceptar la apuesta a ciegas permitiría a una cuenta bloqueada seguir
+        apostando justo mientras el servicio que la bloquea está caído.
+        """
+
+        validation = await self._users.validate(user_id)
+        if not validation.active:
+            raise ForbiddenError("La cuenta está desactivada.")
+        if validation.locked:
+            raise ForbiddenError("La cuenta está bloqueada temporalmente.")
+
     async def create_bet(self, user_id: str, data: dict[str, Any]) -> Bet:
         """Crea una apuesta para el usuario y calcula los campos derivados."""
+
+        await self._ensure_can_bet(user_id)
 
         data = dict(data)
         _normalize_legs(data)
@@ -94,6 +116,7 @@ class BetService:
     async def update_bet(self, user_id: str, bet_id: str, changes: dict[str, Any]) -> Bet:
         """Actualiza los campos indicados de una apuesta del usuario."""
 
+        await self._ensure_can_bet(user_id)
         bet = await self.get_bet(user_id, bet_id)
 
         changes = dict(changes)
