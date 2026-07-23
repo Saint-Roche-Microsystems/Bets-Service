@@ -1,12 +1,17 @@
 """Casos de uso de apuestas: CRUD con campos calculados y control de propiedad."""
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from bets_service.application.ports import UserValidator
+from bets_service.application.ports import BetEventPublisher, UserValidator
 from bets_service.core.exceptions import ForbiddenError, InvalidBetError, NotFoundError
+from bets_service.core.logging import get_request_id
 from bets_service.domain.entities.bet import Bet, BetLeg, BetStatus, BetType
+from bets_service.domain.entities.bet_event import BetEvent, BetEventType
 from bets_service.domain.repositories.bet_repository import BetRepository
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_legs(data: dict[str, Any]) -> None:
@@ -36,17 +41,43 @@ class BetService:
     Antes de aceptar una mutación consulta a ``users-service`` (puerto ``UserValidator``)
     que la cuenta esté activa y sin bloquear.
 
-    Ya **no** recalcula estadísticas: ese trabajo pertenece a progression-service y llegará
-    allí por eventos de dominio (T-022), no por una llamada en proceso.
+    Ya no recalcula estadísticas en proceso: tras cada mutación publica un evento de
+    dominio y devuelve. El recálculo de estadísticas, rangos, logros y ranking lo hace
+    progression-service al consumirlo.
     """
 
     def __init__(
         self,
         bet_repository: BetRepository,
         user_validator: UserValidator,
+        event_publisher: BetEventPublisher,
     ) -> None:
         self._bets = bet_repository
         self._users = user_validator
+        self._events = event_publisher
+
+    async def _publish(self, event_type: BetEventType, user_id: str, bet_id: str) -> None:
+        """Anuncia una mutación ya confirmada en la base de datos.
+
+        Un fallo aquí no revierte la apuesta: ya está persistida y es la fuente de verdad.
+        Se registra y se sigue, igual que el criterio del audit log de auth-service; la
+        proyección que se pierda se reconstruye con el backfill de eventos históricos.
+        """
+
+        event = BetEvent(
+            event_type=event_type,
+            user_id=user_id,
+            bet_id=bet_id,
+            request_id=get_request_id(),
+        )
+        try:
+            await self._events.publish(event)
+        except Exception:
+            logger.exception(
+                "No se pudo publicar el evento de dominio '%s'.",
+                event_type.value,
+                extra={"user_id": user_id, "bet_id": bet_id},
+            )
 
     async def _ensure_can_bet(self, user_id: str) -> None:
         """Comprueba contra users-service que el usuario puede operar.
@@ -73,7 +104,10 @@ class BetService:
         bet = Bet(user_id=user_id, **data)
         _validate_type_vs_legs(bet)
         bet.recalculate()
-        return await self._bets.create(bet)
+        created = await self._bets.create(bet)
+        assert created.id is not None  # persistido: siempre tiene id
+        await self._publish(BetEventType.CREATED, user_id, created.id)
+        return created
 
     async def get_bet(self, user_id: str, bet_id: str) -> Bet:
         """Devuelve una apuesta del usuario o lanza :class:`NotFoundError`."""
@@ -119,7 +153,9 @@ class BetService:
         _validate_type_vs_legs(bet)
         bet.recalculate()
         bet.updated_at = datetime.now(timezone.utc)
-        return await self._bets.update(bet)
+        updated = await self._bets.update(bet)
+        await self._publish(BetEventType.UPDATED, user_id, bet_id)
+        return updated
 
     async def delete_bet(self, user_id: str, bet_id: str) -> None:
         """Elimina una apuesta del usuario o lanza :class:`NotFoundError`."""
@@ -127,3 +163,4 @@ class BetService:
         # Reutiliza get_bet para verificar propiedad y existencia.
         await self.get_bet(user_id, bet_id)
         await self._bets.delete(bet_id)
+        await self._publish(BetEventType.DELETED, user_id, bet_id)

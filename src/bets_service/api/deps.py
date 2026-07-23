@@ -11,12 +11,13 @@ from typing import Annotated
 from fastapi import Depends, Header, Request
 from pymongo.asynchronous.database import AsyncDatabase
 
-from bets_service.application.ports import UserValidator
+from bets_service.application.ports import BetEventPublisher, UserValidator
 from bets_service.application.services.bet_import_service import BetImportService
 from bets_service.application.services.bet_service import BetService
 from bets_service.core.config import Settings, get_settings
 from bets_service.core.exceptions import InvalidCredentialsError
 from bets_service.domain.repositories.bet_repository import BetRepository
+from bets_service.infrastructure.events.logging_publisher import LoggingBetEventPublisher
 from bets_service.infrastructure.repositories.mongo_bet_repository import MongoBetRepository
 from bets_service.infrastructure.tcp.users_validator import (
     AlwaysValidUserValidator,
@@ -90,11 +91,22 @@ def get_user_validator(
     )
 
 
+def get_event_publisher() -> BetEventPublisher:
+    """Publisher de eventos de dominio.
+
+    Hasta T-027 sólo deja el evento en el log; entonces se cambia por el publisher real
+    hacia el exchange ``bets.events`` de RabbitMQ sin tocar la capa de aplicación.
+    """
+
+    return LoggingBetEventPublisher()
+
+
 def get_bet_service(
     bets: Annotated[BetRepository, Depends(get_bet_repository)],
     users: Annotated[UserValidator, Depends(get_user_validator)],
+    events: Annotated[BetEventPublisher, Depends(get_event_publisher)],
 ) -> BetService:
-    return BetService(bets, users)
+    return BetService(bets, users, events)
 
 
 def get_bet_import_service(
