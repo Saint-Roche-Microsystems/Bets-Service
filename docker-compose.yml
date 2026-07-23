@@ -1,0 +1,37 @@
+# Compose de desarrollo aislado del bets-service: levanta el servicio con su propio Mongo
+# para poder trabajarlo sin depender del resto del sistema.
+#
+# El compose global que junta gateway + los 4 microservicios + Redis + RabbitMQ es la
+# tarea T-033; el bloque de servicio que hay que pegar allí está documentado en el README.
+services:
+  bets-service:
+    build: .
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    ports:
+      # Puerto alto en el host para no chocar con el Mongo del monolito (27017) ni con el
+      # de auth-service (27019). Se expone para poder correr los tests desde fuera:
+      #   TEST_MONGO_URI=mongodb://localhost:27020 poetry run pytest
+      - "27020:27017"
+    volumes:
+      - bets_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  bets_mongo_data:
