@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     # (ver core/logging.py), un registro por petición REST más uno por excepción.
     log_level: str = "INFO"
 
+    # RabbitMQ: publisher real de eventos de dominio (T-027) hacia el exchange declarado en
+    # T-025. Con la URL vacía se usa el publisher de log de desarrollo (ver
+    # infrastructure/events/logging_publisher.py); no debe desplegarse así.
+    rabbitmq_url: str | None = None
+    bets_events_exchange: str = "bets.events"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_cors_origins(cls, value: object) -> object:

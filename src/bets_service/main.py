@@ -3,6 +3,7 @@
 import logging
 from contextlib import asynccontextmanager
 
+import aio_pika
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -49,9 +50,25 @@ async def lifespan(app: FastAPI):
 
     await ensure_indexes(db)
 
+    # Publisher real de eventos (T-027): sin URL configurada, el servicio sigue con el
+    # publisher de log de desarrollo (ver deps.get_event_publisher).
+    rabbit_connection = None
+    if settings.rabbitmq_url:
+        rabbit_connection = await aio_pika.connect_robust(settings.rabbitmq_url)
+        channel = await rabbit_connection.channel()
+        # passive=True: el exchange ya lo declara la infraestructura (T-025); este
+        # servicio sólo publica en él, no es dueño de su topología.
+        app.state.bets_events_exchange = await channel.get_exchange(
+            settings.bets_events_exchange
+        )
+    else:
+        app.state.bets_events_exchange = None
+
     try:
         yield
     finally:
+        if rabbit_connection is not None:
+            await rabbit_connection.close()
         await client.close()
 
 
