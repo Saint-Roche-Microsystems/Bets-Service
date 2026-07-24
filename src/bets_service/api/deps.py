@@ -18,6 +18,7 @@ from bets_service.core.config import Settings, get_settings
 from bets_service.core.exceptions import InvalidCredentialsError
 from bets_service.domain.repositories.bet_repository import BetRepository
 from bets_service.infrastructure.events.logging_publisher import LoggingBetEventPublisher
+from bets_service.infrastructure.events.rabbitmq_publisher import RabbitMqBetEventPublisher
 from bets_service.infrastructure.repositories.mongo_bet_repository import MongoBetRepository
 from bets_service.infrastructure.tcp.users_validator import (
     AlwaysValidUserValidator,
@@ -91,14 +92,17 @@ def get_user_validator(
     )
 
 
-def get_event_publisher() -> BetEventPublisher:
+def get_event_publisher(request: Request) -> BetEventPublisher:
     """Publisher de eventos de dominio.
 
-    Hasta T-027 sólo deja el evento en el log; entonces se cambia por el publisher real
-    hacia el exchange ``bets.events`` de RabbitMQ sin tocar la capa de aplicación.
+    Con RabbitMQ configurado (T-027), publica al exchange ``bets.events`` real. Sin
+    configurar, cae al publisher de log de desarrollo, sin tocar la capa de aplicación.
     """
 
-    return LoggingBetEventPublisher()
+    exchange = getattr(request.app.state, "bets_events_exchange", None)
+    if exchange is None:
+        return LoggingBetEventPublisher()
+    return RabbitMqBetEventPublisher(exchange)
 
 
 def get_bet_service(
