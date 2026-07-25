@@ -12,6 +12,7 @@ import json
 import logging
 
 from bets_service.core.exceptions import UserValidationUnavailableError
+from bets_service.core.logging import get_request_id
 from bets_service.domain.entities.user_validation import UserValidation
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,8 @@ class TcpUserValidator:
 
     El contrato con el que se integrará, ya fijado con Olivier:
 
-    * Petición  — ``{"pattern": "users.validate", "id": <str>, "data": {"user_id": <str>}}``
+    * Petición  — ``{"pattern": "users.validate", "id": <str>,
+      "data": {"user_id": <str>, "request_id": <str|None>}}``
     * Respuesta — ``{"id": <str>, "response": {"active": bool, "tier": str, "locked": bool}}``
 
     ambos con el framing de ``Transport.TCP`` de Nest (``<longitud>#<json>``).
@@ -57,7 +59,7 @@ class TcpUserValidator:
     async def validate(self, user_id: str) -> UserValidation:
         try:
             response = await asyncio.wait_for(
-                self._request({"user_id": user_id}),
+                self._request({"user_id": user_id, "request_id": get_request_id()}),
                 timeout=self._timeout_seconds,
             )
         except (asyncio.TimeoutError, OSError, ValueError) as exc:
