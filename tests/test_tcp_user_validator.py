@@ -37,7 +37,9 @@ async def test_parses_active_response():
     async def handler(reader, writer):
         req = await _read_frame(reader)
         assert req["pattern"] == "users.validate"
-        assert req["data"] == {"user_id": "u1"}
+        # request_id viaja junto al user_id para poder correlacionar el hop TCP con la
+        # petición HTTP que lo originó; fuera de una request en curso es None.
+        assert req["data"] == {"user_id": "u1", "request_id": None}
         writer.write(
             _encode(
                 {

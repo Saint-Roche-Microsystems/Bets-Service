@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from bets_service.api.routers import bets
+from bets_service.api.routers import bets, internal
 from bets_service.core.config import get_settings
 from bets_service.core.exceptions import (
     DomainError,
@@ -258,6 +258,7 @@ def create_app() -> FastAPI:
     _register_exception_handlers(app)
 
     app.include_router(bets.router)
+    app.include_router(internal.router)
 
     @app.get("/health", tags=["health"], summary="Comprobación de salud")
     async def health() -> dict[str, str]:
