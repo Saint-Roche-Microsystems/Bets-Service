@@ -18,7 +18,14 @@ from bets_service.core.exceptions import (
     NotFoundError,
     UserValidationUnavailableError,
 )
-from bets_service.core.logging import Timer, new_request_id, set_request_id, setup_logging
+from bets_service.core.logging import (
+    Timer,
+    get_request_id,
+    new_request_id,
+    set_request_id,
+    setup_logging,
+)
+from bets_service.core.observability import capture_error, init_sentry
 from bets_service.infrastructure.database.mongo import (
     create_client,
     ensure_indexes,
@@ -26,6 +33,8 @@ from bets_service.infrastructure.database.mongo import (
 )
 
 logger = logging.getLogger(__name__)
+
+_SERVICE_NAME = "bets-service"
 
 
 @asynccontextmanager
@@ -88,7 +97,14 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
         try:
             response = await call_next(request)
-        except Exception:
+        except Exception as exc:
+            capture_error(
+                exc,
+                service=_SERVICE_NAME,
+                transport="http",
+                failure_mode="fail-closed",
+                request_id=request_id,
+            )
             logger.exception(
                 "Excepción no controlada procesando petición",
                 extra={
@@ -169,6 +185,15 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
         # 5xx (errores no anticipados o dependencias caídas) se loguean como error; los 4xx
         # (validación, permisos, credenciales) son parte del flujo normal y son warning.
+        if status_code >= 500:
+            capture_error(
+                exc,
+                service=_SERVICE_NAME,
+                transport="http",
+                failure_mode="fail-closed",
+                request_id=get_request_id(),
+                exc_type=type(exc).__name__,
+            )
         log_level = logging.ERROR if status_code >= 500 else logging.WARNING
         logger.log(
             log_level,
@@ -196,6 +221,7 @@ def create_app() -> FastAPI:
 
     settings = get_settings()
     setup_logging(settings.log_level)
+    init_sentry(settings)
 
     # Fallar aquí es preferible a arrancar aceptando cualquier X-User-Id: sin el secreto de
     # servicio, la identidad que llega por cabecera no está respaldada por nada.

@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     rabbitmq_url: str | None = None
     bets_events_exchange: str = "bets.events"
 
+    # Sentry (error tracking, sin performance tracing). DSN vacío = SDK deshabilitado, no
+    # rompe el arranque local.
+    sentry_dsn: str = ""
+    sentry_environment: str = "development"
+    sentry_traces_sample_rate: float = 0.0
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_cors_origins(cls, value: object) -> object:

@@ -7,6 +7,7 @@ from typing import Any
 from bets_service.application.ports import BetEventPublisher, UserValidator
 from bets_service.core.exceptions import ForbiddenError, InvalidBetError, NotFoundError
 from bets_service.core.logging import get_request_id
+from bets_service.core.observability import capture_error
 from bets_service.domain.entities.bet import Bet, BetLeg, BetStatus, BetType
 from bets_service.domain.entities.bet_event import BetEvent, BetEventType
 from bets_service.domain.repositories.bet_repository import BetRepository
@@ -72,7 +73,16 @@ class BetService:
         )
         try:
             await self._events.publish(event)
-        except Exception:
+        except Exception as exc:
+            capture_error(
+                exc,
+                service="bets-service",
+                transport="rabbitmq",
+                failure_mode="fail-open",
+                request_id=get_request_id(),
+                user_id=user_id,
+                bet_id=bet_id,
+            )
             logger.exception(
                 "No se pudo publicar el evento de dominio '%s'.",
                 event_type.value,
