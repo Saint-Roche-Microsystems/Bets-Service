@@ -149,6 +149,16 @@ class BetService:
             bet_type=bet_type,
         )
 
+    async def list_user_ids(self) -> list[str]:
+        """user_ids con al menos una apuesta.
+
+        Lo consume el servicio de progresión para enumerar a quién hay que recalcular sin
+        tener que conocer la base de apuestas: esta colección es la única fuente de verdad
+        de qué usuarios han apostado alguna vez.
+        """
+
+        return await self._bets.distinct_user_ids()
+
     async def update_bet(self, user_id: str, bet_id: str, changes: dict[str, Any]) -> Bet:
         """Actualiza los campos indicados de una apuesta del usuario."""
 

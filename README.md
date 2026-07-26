@@ -70,6 +70,9 @@ TEST_MONGO_URI=mongodb://localhost:27020 poetry run pytest
 
 ## Cómo se llama a este servicio
 
+Hay dos superficies distintas: `/bets/*`, que atiende a una persona detrás del gateway, y
+`/internal/*`, que atiende a otro servicio.
+
 Todas las rutas de `/bets/*` exigen **dos cabeceras**, que inyecta el api-gateway:
 
 | Cabecera | Qué es |
@@ -89,6 +92,14 @@ curl -s localhost:8002/bets \
   -H "X-Internal-Key: $INTERNAL_API_KEY"
 ```
 
+Las rutas de `/internal/*` exigen **solo el secreto**: el llamante es otro servicio, que no
+tiene un `X-User-Id` propio que ofrecer y pregunta por un usuario cualquiera.
+
+```bash
+curl -s "localhost:8002/internal/bets?user_id=6a60c83b2a0af5b4ab9745cf" \
+  -H "X-Internal-Key: $INTERNAL_API_KEY"
+```
+
 ---
 
 ## Endpoints
@@ -104,6 +115,19 @@ Todos bajo `/bets`, todos acotados al usuario de la cabecera.
 | `DELETE` | `/bets/{id}` | Elimina → `204` |
 | `GET` | `/bets/template` | Descarga la plantilla `.xlsx` |
 | `POST` | `/bets/import` | Importa apuestas desde un `.xlsx` relleno |
+
+### Rutas internas (servicio a servicio)
+
+No las enruta el api-gateway: solo son alcanzables desde la red interna, y exigen
+`X-Internal-Key` (declarado a nivel de router, no por endpoint).
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| `GET` | `/internal/bets?user_id=&page=&page_size=` | Apuestas de un usuario arbitrario. `page_size` 1..500 (default 200); misma forma de respuesta que `GET /bets` |
+| `GET` | `/internal/bets/user-ids` | `{ "user_ids": [...] }` con los usuarios que tienen al menos una apuesta |
+
+El tope de 500 es más alto que el de la ruta pública (100) porque el consumidor recorre el
+historial completo de un usuario, no una pantalla. Para leerlo entero se itera hasta `total`.
 
 ### Crear una apuesta
 
@@ -192,6 +216,12 @@ recálculo de estadísticas, rangos, logros y ranking.
 `request_id` viajan para poder rastrear un recálculo hasta la petición que lo originó, ahora
 que un solo flujo atraviesa varios procesos.
 
+El evento **avisa**, no transporta el historial: para recalcular, progression-service vuelve
+por `GET /internal/bets?user_id=…` y relee las apuestas de ese usuario desde aquí. Esa es la
+razón de que el payload no crezca con los campos de la apuesta — así el recálculo siempre
+opera sobre el estado actual, y reprocesar un evento antiguo o repetido da el mismo
+resultado (idempotencia) en vez de aplicar deltas.
+
 **Publicar no puede tumbar la operación**: si el bus falla se registra y se sigue. La apuesta
 ya está persistida y es la fuente de verdad; la proyección perdida se reconstruye con el
 backfill de eventos históricos (T-029).
@@ -234,6 +264,7 @@ Todas las variables tienen valor por defecto salvo `INTERNAL_API_KEY`. Ver
                                      auth-service (C)
 
    bets-service ──bet.created/updated/deleted──▶ progression-service
+                ◀──GET /internal/bets?user_id=──┘   (relee para recalcular)
 ```
 
 El `X-Request-Id` que genera el gateway se propaga: se reutiliza si llega en la cabecera,
