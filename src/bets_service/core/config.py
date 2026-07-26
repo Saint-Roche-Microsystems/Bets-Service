@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # Aplicación
     app_name: str = "Fijazo Bets Service"
     app_description: str = (
-        "Apuestas de fijazoo: CRUD, cálculo de derivados e importación/exportación de Excel."
+        "Apuestas de fijazoo: CRUD, cálculo de derivados e importación desde Excel."
     )
     app_version: str = "0.1.0"
     debug: bool = False
@@ -53,7 +53,8 @@ class Settings(BaseSettings):
     # Con el host vacío se usa un validador permisivo de desarrollo (ver
     # infrastructure/tcp/users_validator.py); no debe desplegarse así.
     users_service_tcp_host: str | None = None
-    users_service_tcp_port: int = 3002
+    # 3011 es el puerto en el que users-service levanta su transporte TCP (su TCP_PORT).
+    users_service_tcp_port: int = 3011
     users_service_timeout_seconds: float = 5.0
 
     # Logging: nivel raíz de la app (DEBUG/INFO/WARNING/ERROR). Los logs se emiten en JSON

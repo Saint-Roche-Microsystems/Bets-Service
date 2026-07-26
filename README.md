@@ -1,7 +1,7 @@
 # bets-service
 
 Microservicio de apuestas de **fijazoo**: CRUD de apuestas, cálculo de campos derivados e
-importación/exportación de Excel.
+importación desde Excel.
 
 Es la **fuente de verdad** del sistema. Las estadísticas, el rango, los logros y el ranking
 son proyecciones que progression-service deriva de las apuestas que viven aquí.
@@ -285,7 +285,7 @@ debe publicar puerto en el host: el único servicio público es el gateway.
       MONGO_DB_NAME: bets_db
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}       # el mismo que gateway y auth-service
       USERS_SERVICE_TCP_HOST: users-service
-      USERS_SERVICE_TCP_PORT: 3002                # ajustar al puerto TCP real de T-015
+      USERS_SERVICE_TCP_PORT: 3011                # el TCP_PORT de users-service
     depends_on:
       mongo:
         condition: service_healthy
